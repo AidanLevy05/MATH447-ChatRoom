@@ -23,7 +23,18 @@ def receiveMessages(conn):
     finally:
         conn.close()
 
+def welcome():
+    print("=========================================")
+    print()
+    print("            MATH 447 CHAT ROOM           ")
+    print("                 client.py               ")
+    print()
+    print("=========================================\n")
+
 def main():
+
+    welcome()
+
     conn = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     conn.connect((HOST, PORT))
     print(f"[CONNECTED] Connected to {HOST}:{PORT}")

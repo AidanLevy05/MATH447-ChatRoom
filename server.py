@@ -30,7 +30,18 @@ def handleClient(conn, addr, clientID):
     finally:
         conn.close()
 
+def welcome():
+    print("=========================================")
+    print()
+    print("            MATH 447 CHAT ROOM           ")
+    print("                 server.py               ")
+    print()
+    print("=========================================\n")
+
 def main():
+
+    welcome()
+
     server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     server.bind((HOST, PORT))
