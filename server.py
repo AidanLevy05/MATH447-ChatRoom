@@ -18,10 +18,10 @@ def handleClient(conn, addr, clientID):
     print(f"[CLIENT {clientID}] Connected from {addr}")
     try:
         while True:
-            data = conn.recv(4096)
+            data = conn.recv(4096)  
             if not data:
                 break
-            print(f"[CLIENT {clientID}] Relaying {len(data)} bytes")
+            print(f"[CLIENT {clientID}] {len(data)} bytes | {data}")
             for c in clients:
                 if c is not conn:
                     c.sendall(data)
