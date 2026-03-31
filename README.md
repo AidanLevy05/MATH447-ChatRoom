@@ -10,7 +10,6 @@ Aidan, Maddie, Lei
 - Libraries: socket, cryprography
 - Messages use RSA-2048 for key exchange
 - Message encryption is AES-256-GCM
-- Key derivation is SHA-256
 
 # Goals
 
@@ -22,6 +21,5 @@ Aidan, Maddie, Lei
 6. Step 3
 7. Implement AES-256-GCM for message encryption
 8. Step 3
-9. Implement SHA-256 for key derivation
-10. Step 3
-11. Run program, ensure that server cannot read the encrypted messages
+9. Run program, ensure that server cannot read the encrypted messages
+10. Have an encrypted verion and un-encrypted version to show the server reading or not reading the messages
