@@ -1,59 +1,18 @@
 #
 # client.py
 # Created: 03/30/2026
-# Last Updated: 03/30/2026 by Aidan
+# Last Updated: 03/31/2026 by Codex
 #
 
-import socket
-import threading 
+import curses
 
-HOST='127.0.0.1'
-PORT=65432
+from ChatClient import ChatClient
 
-# Listen for incoming messages from the server
-def receiveMessages(conn):
-    try:
-        while True:
-            data = conn.recv(4096)
-            if not data:
-                break
-            print(f"\n[RECEIVED] {data.decode()}")
-    except ConnectionResetError:
-        print("[DISCONNECTED] Lost connection to server")
-    finally:
-        conn.close()
-
-def welcome():
-    print("=========================================")
-    print()
-    print("            MATH 447 CHAT ROOM           ")
-    print("                 client.py               ")
-    print()
-    print("=========================================\n")
 
 def main():
+    client = ChatClient()
+    curses.wrapper(client.run)
 
-    welcome()
-
-    conn = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    conn.connect((HOST, PORT))
-    print(f"[CONNECTED] Connected to {HOST}:{PORT}")
-
-    listener = threading.Thread(target=receiveMessages, args=(conn,))
-    listener.daemon = True 
-    listener.start()
-
-    try:
-        while True:
-            msg = input()
-            if msg.lower() == '/quit':
-                break
-            conn.sendall(msg.encode())
-    except (KeyboardInterrupt, EOFError):
-        pass
-    finally:
-        conn.close()
-        print("[DISCONNECTED] Connection closed")
 
 if __name__ == '__main__':
     main()
