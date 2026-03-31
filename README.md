@@ -9,7 +9,7 @@ Aidan, Maddie, Lei
 - Language: Python
 - Libraries: socket, cryprography
 - Messages use RSA-2048 for key exchange
-- Message encryption is AES-256-GCM
+- Message encryption is ChaCha20-Poly1305
 
 # Goals
 
@@ -19,7 +19,7 @@ Aidan, Maddie, Lei
 4. ~~Create chat server~~
 5. Implement RSA-2048 key exchange
 6. Step 3
-7. Implement AES-256-GCM for message encryption
+7. Implement ChaCha20-Poly1305 for message encryption
 8. Step 3
 9. Run program, ensure that server cannot read the encrypted messages
 10. Have an encrypted verion and un-encrypted version to show the server reading or not reading the messages
