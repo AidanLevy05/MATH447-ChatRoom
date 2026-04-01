@@ -1,7 +1,7 @@
 #
 # ChatServer.py
 # Created: 03/31/2026
-# Last Updated: 03/31/2026 by Codex
+# Last Updated: 04/01/2026 by Aidan
 #
 
 import curses
@@ -12,7 +12,7 @@ import time
 
 HOST = '127.0.0.1'
 PORT = 65432
-MAX_CLIENTS = 2
+MAX_CLIENTS = 10
 POLL_MS = 100
 
 

@@ -1,7 +1,7 @@
 #
 # ChatClient.py
 # Created: 03/31/2026
-# Last Updated: 03/31/2026 by Codex
+# Last Updated: 03/31/2026 by Aidan
 #
 
 import curses
