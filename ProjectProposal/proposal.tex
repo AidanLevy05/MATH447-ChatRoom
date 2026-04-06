@@ -64,4 +64,16 @@
 
         Poly1305 is a universal hash function that computes a 128 bit authentication tag over a message \cite{bernstein2005}. Given a 256 bit one time key consisting of two 128 bit halves, $r$ and $s$, the Poly1305 tag for a message is computed as a polynomial evaluation modulu the prime $p = 2^{130} - 5$. The message is divided into 16 byte blocks, where each block is treated as an integer with a high bit appended, and the running polynomial accumulator is updated by adding each block and multiplying by $r$. After all blocks are processed, the one time pad $s$ is added to the accumulator, and the result is taken module $2^{128}$ to produce the final 128 bit tag. The security of Poly1305 relies on the key being used only once. In the ChaCha20-Poly1305 construction, this requirement is satisfied automatically since the first 32 vytes of the ChaCha20 keystream are used as the one time Poly1305 key, with the remaining keystream used to encrypt the plaintext. This tight coupling between the cipher and the authenticator ensures that the Poly1305 key is always fresh and unique for each message, as long as the nonce is never reused with the same key. 
 
+    \subsection{The AEAD Construction}
+
+        Authenticated Encryption with Associated Data (AEAD) is a construction that provides both confidentiality and integrity in a single operation \cite{rfc8439}. The ChaCha20-Poly1305 AEAD takes as input a 256 bit key, a 96 bit nonce, a plaintext message, and optional associated data (AAD) that is authenticated but not encrypted. The encryption process generates a Poly1305 key from the first ChaCha20 block, encrypts the plaintext using the remainder of the keystream, and then computes an authentication tag over the AAD, the ciphertext, and their respective lengths. The resulting outpit is the ciphertext concatenated with the 128 bit tag. 
+
+        Decryption reverses this process: the tag is verified before the plaintext is returned, ensuring that any tampering with the ciphertext or AAD is detected and rejected. This encrypt then MAC construction provides strong authenticity that avoids the well documented pit falls of cipher MAC combinations \cite{procter2014}. 
+
+\section{Project Overview and Design}
+
+    Our application follows a client server architecture with three components: A central relay server and two or more chat clients. The server facilitates message routing but is excluded from having access to the plaintext content of messages. All cryptographic operations occur on the client side, ensuring true end to end encryption. The project is implemented in Python using the \texttt{socket} library for networking and the \texttt{cryptography} library for all cryptographic primitives. 
+
+    The communication protocol happens in two phases. In the first phase, clients exchange RSA-2048 public keys to perform an asymmetric key exchange. Each client generates an RSA key pair, shares its public key through the server
+
 \end{document}
