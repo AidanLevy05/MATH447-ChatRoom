@@ -74,6 +74,60 @@
 
     Our application follows a client server architecture with three components: A central relay server and two or more chat clients. The server facilitates message routing but is excluded from having access to the plaintext content of messages. All cryptographic operations occur on the client side, ensuring true end to end encryption. The project is implemented in Python using the \texttt{socket} library for networking and the \texttt{cryptography} library for all cryptographic primitives. 
 
-    The communication protocol happens in two phases. In the first phase, clients exchange RSA-2048 public keys to perform an asymmetric key exchange. Each client generates an RSA key pair, shares its public key through the server
+    The communication protocol happens in two phases. In the first phase, clients exchange RSA-2048 public keys to perform an asymmetric key exchange. Each client generates an RSA key pair, shares its public key through the server, and uses the partner's public key to encrypt a shared symmetric key. This initial handshake established a 256 bit symmetric key known only to the communicating clients. In the second phase, all subsequent messages encrypted using ChaCha20-Poly1305 with a unique 96 bit nonce (generated randomly for each message), and the resulting ciphertext along with its authentication tag is sent through the server to the recipient. The server sees only the byte streams and cannot decrypt or forge messages.
+
+    It is important to emphasize that while RSA-2048 is used as a practical way for establishing the shared key, it is not the focus of this project. Our study centers on the ChaCha20-Poly1305 algorithm, its mathematical foundations, its security properties, its performance characteristics, and its behavior in a live communication system.
+
+\section{Project Goals}
+
+    The project has three primary goals. First we aim to build a fully functional chat application where all messages are encrypted using ChaCha20-Poly1305, demonstrating the practical application of the cipher in a real system. Second, we will provide a detailed mathematical and theoretical analysis of the ChaCha20-Poly1305 construction, including the quarter round function, the polynomial arithmetic underlying Poly1305, and the security guarantees of the AEAD composition. Third, we will construct a side by side comparison demonstrating the difference between encrypted and unencrypted communication, allowing us to visually show that the server cannot read messages when ChaCha20-Poly1305 is employed.
+
+    The final project will include the complete Python source code (server and client), a ten page paper detailing the theory, implementation, and analysis of ChaCha20-Poly1305, a live demonstration of the encrypted chat system, and an in class presentation covering the cryptographic concepts and our findings.
+
+\section{Timeline}
+
+    \textbf{Weeks 1--2 (Completed):} Implemented the basic server and client using Python sockets. Verified multi client connectivity and basic relay functionality.
+
+    \textbf{Week 3--4:} Implement RSA-2048 and key exchange between clients. Verify that both clients derive the same shared symmetric key. Integrate ChaCha20-Poly1305 message encryption and decryption using the shared key. Test with multiple message exchanges and verify tag authentication.
+
+    \textbf{Week 5:} Build the unencrypted version for comparison. Develop the demonstration showing server side visiblity of plaintext vs. ciphertext. Write the final paper and prepare the final presenation.
+
+\begin{thebibliography}{9}
+
+    \bibitem{bernstein2008}
+        D.~J. Bernstein,
+        ``ChaCha, a variant of Salsa20,''
+        2008.
+        Available: \url{https://cr.yp.to/chacha.html}
+
+    \bibitem{bernstein2005}
+        D.~J. Bernstein,
+        ``The Poly1305-AES message-authentication code,''
+        in \textit{Fast Software Encryption (FSE 2005)},
+        Lecture Notes in Computer Science, vol.~3557,
+        Springer, 2005, pp.~32--49.
+
+    \bibitem{rfc8439}
+        Y.~Nir and A.~Langley,
+        ``ChaCha20 and Poly1305 for IETF Protocols,''
+        RFC~8439, Internet Engineering Task Force, June 2018.
+        Available: \url{https://www.rfc-editor.org/rfc/rfc8439}
+
+    \bibitem{rfc7905}
+        A.~Langley, W.~Chang, N.~Mayrogiannopoulos,
+        J.~Strombergson, and S.~Josefsson,
+        ``ChaCha20-Poly1305 Cipher Suites for Transport Layer
+        Securtity (TLS),''
+        RFC~7905, Internet Engineering Task Force, June 2016.
+        Available: \url{https://www.rfc-editor.org/rfc/rfc7905}
+
+    \bibitem{procter2014}
+        G.~Procter,
+        ``A Security Analysis of the Compisition of ChaCha20
+        and Poly1305,''
+        Cryptology ePrint Archive, Report 2014/613, 2014.
+        Available: \url{https://eprint.iacr.org/2014/613}
+
+\end{thebibliography}
 
 \end{document}
