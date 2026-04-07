@@ -1,13 +1,17 @@
 #
 # ChatClient.py
 # Created: 03/31/2026
-# Last Updated: 03/31/2026 by Aidan
+# Last Updated: 04/07/2026 by Codex
 #
 
 import curses
+import json
 import socket
 import textwrap
 import threading
+
+from ChaCha import ChaChaCipher
+from RSA import RSAKeyExchange
 
 HOST = '127.0.0.1'
 PORT = 65432
@@ -56,11 +60,17 @@ class ChatClient:
     def __init__(self):
         self.conn = None
         self.listener = None
+        self.chacha = ChaChaCipher()
+        self.rsa = RSAKeyExchange()
         self.name = ''
         self.messages = []
         self.messages_lock = threading.Lock()
+        self.peer_keys = {}
+        self.peer_keys_lock = threading.Lock()
         self.running = True
         self.status = 'Not connected'
+        self.client_id = None
+        self.server_public_key = ''
 
     def add_message(self, message):
         with self.messages_lock:
@@ -70,21 +80,298 @@ class ChatClient:
         with self.messages_lock:
             return list(self.messages)
 
+    def peer_count(self):
+        with self.peer_keys_lock:
+            return len(self.peer_keys)
+
+    def secure_peer_count(self):
+        with self.peer_keys_lock:
+            return sum(1 for peer in self.peer_keys.values() if peer.get('session_key'))
+
+    def update_status(self):
+        if self.conn is None:
+            self.status = 'Disconnected'
+            return
+
+        if self.client_id is None:
+            self.status = f'Connected to {HOST}:{PORT} | RSA pending'
+            return
+
+        self.status = (
+            f'Connected to {HOST}:{PORT} | ID {self.client_id} | '
+            f'Peers {self.peer_count()} | Secure {self.secure_peer_count()}'
+        )
+
+    def replace_peers(self, peers):
+        with self.peer_keys_lock:
+            existing_peers = self.peer_keys
+            self.peer_keys = {}
+            for peer in peers:
+                public_key = peer.get('public_key', '')
+                client_id = peer.get('client_id')
+                if not public_key or client_id is None:
+                    continue
+
+                existing = existing_peers.get(client_id, {})
+                self.peer_keys[client_id] = {
+                    'name': peer.get('name', f'Client {client_id}'),
+                    'public_key': public_key,
+                    'session_key': existing.get('session_key', ''),
+                }
+
+    def upsert_peer(self, client_id, name, public_key):
+        with self.peer_keys_lock:
+            existing = self.peer_keys.get(client_id, {})
+            self.peer_keys[client_id] = {
+                'name': name,
+                'public_key': public_key,
+                'session_key': existing.get('session_key', ''),
+            }
+
+    def remove_peer(self, client_id):
+        with self.peer_keys_lock:
+            peer = self.peer_keys.pop(client_id, None)
+
+        if peer is None:
+            return None
+        return peer['name']
+
+    def get_peer_info(self, client_id):
+        with self.peer_keys_lock:
+            peer = self.peer_keys.get(client_id)
+            if peer is None:
+                return None
+            return dict(peer)
+
+    def get_peer_snapshot(self):
+        with self.peer_keys_lock:
+            return {
+                client_id: dict(peer_info)
+                for client_id, peer_info in self.peer_keys.items()
+            }
+
+    def set_session_key(self, client_id, session_key, name=None):
+        with self.peer_keys_lock:
+            existing = self.peer_keys.get(client_id, {})
+            self.peer_keys[client_id] = {
+                'name': name or existing.get('name', f'Client {client_id}'),
+                'public_key': existing.get('public_key', ''),
+                'session_key': session_key,
+            }
+
+    def clear_session_key(self, client_id, expected_key=None):
+        with self.peer_keys_lock:
+            peer = self.peer_keys.get(client_id)
+            if peer is None:
+                return
+            if expected_key is not None and peer.get('session_key') != expected_key:
+                return
+            peer['session_key'] = ''
+
+    def maybe_share_key_with_peer(self, client_id):
+        if self.client_id is None or client_id is None or self.client_id >= client_id:
+            return
+
+        peer = self.get_peer_info(client_id)
+        if peer is None or not peer.get('public_key') or peer.get('session_key'):
+            return
+
+        session_key = self.chacha.generate_key()
+        self.set_session_key(client_id, session_key, peer['name'])
+
+        try:
+            encrypted_key = self.rsa.encrypt_for_public_key(session_key, peer['public_key'])
+            self.send_packet({
+                'type': 'key_exchange',
+                'target_client_id': client_id,
+                'encrypted_key': encrypted_key,
+            })
+            self.add_message(f'[SYSTEM] Secure session key shared with {peer["name"]}.')
+            self.update_status()
+        except (OSError, TypeError, ValueError) as exc:
+            self.clear_session_key(client_id, expected_key=session_key)
+            self.add_message(f'[SYSTEM] Could not share secure key with {peer["name"]}: {exc}')
+            self.update_status()
+
+    def ensure_session_keys(self):
+        for client_id in self.get_peer_snapshot():
+            self.maybe_share_key_with_peer(client_id)
+
+    def send_packet(self, packet):
+        payload = json.dumps(packet, separators=(',', ':')).encode('utf-8') + b'\n'
+        self.conn.sendall(payload)
+
+    def send_chat_message(self, message):
+        peers = self.get_peer_snapshot()
+        if not peers:
+            self.add_message('[SYSTEM] No connected peers.')
+            return False
+
+        pending = [peer['name'] for peer in peers.values() if not peer.get('session_key')]
+        if pending:
+            self.add_message('[SYSTEM] Secure key exchange is still in progress.')
+            return False
+
+        for client_id, peer in peers.items():
+            encrypted = self.chacha.encrypt(message, peer['session_key'])
+            self.send_packet({
+                'type': 'encrypted_chat',
+                'target_client_id': client_id,
+                'nonce': encrypted['nonce'],
+                'ciphertext': encrypted['ciphertext'],
+                'tag': encrypted['tag'],
+            })
+
+        self.add_message(f'{self.name}: {message}')
+        return True
+
+    def handle_packet(self, packet):
+        packet_type = packet.get('type', '')
+
+        if packet_type == 'welcome':
+            self.client_id = packet.get('client_id')
+            self.server_public_key = str(packet.get('server_public_key', ''))
+            proof = str(packet.get('proof', ''))
+
+            try:
+                decrypted = self.rsa.decrypt_from_base64(proof).decode('utf-8', errors='replace')
+            except (TypeError, ValueError) as exc:
+                self.add_message(f'[SYSTEM] RSA key exchange failed: {exc}')
+                return
+
+            if decrypted != f'client-{self.client_id}-ready':
+                self.add_message('[SYSTEM] RSA proof from server did not match.')
+                return
+
+            if self.server_public_key:
+                try:
+                    confirm = self.rsa.encrypt_for_public_key(
+                        f'server-ready:{self.client_id}',
+                        self.server_public_key,
+                    )
+                    self.send_packet({'type': 'hello_confirm', 'proof': confirm})
+                except (OSError, TypeError, ValueError) as exc:
+                    self.add_message(f'[SYSTEM] RSA confirmation failed: {exc}')
+                    return
+
+            self.add_message('[SYSTEM] RSA-2048 key exchange complete.')
+            self.update_status()
+            return
+
+        if packet_type == 'peer_list':
+            peers = packet.get('peers', [])
+            self.replace_peers(peers)
+            if peers:
+                self.add_message(f'[SYSTEM] Loaded {len(peers)} peer public key(s).')
+            self.ensure_session_keys()
+            self.update_status()
+            return
+
+        if packet_type == 'peer_joined':
+            client_id = packet.get('client_id')
+            name = str(packet.get('name', f'Client {client_id}'))
+            public_key = str(packet.get('public_key', ''))
+            if client_id is None or not public_key:
+                return
+
+            self.upsert_peer(client_id, name, public_key)
+            self.add_message(f'[SYSTEM] {name} joined. RSA public key received.')
+            self.maybe_share_key_with_peer(client_id)
+            self.update_status()
+            return
+
+        if packet_type == 'peer_left':
+            client_id = packet.get('client_id')
+            name = self.remove_peer(client_id)
+            if name is None:
+                self.add_message(f'[SYSTEM] Client {client_id} disconnected.')
+            else:
+                self.add_message(f'[SYSTEM] {name} disconnected.')
+            self.update_status()
+            return
+
+        if packet_type == 'key_exchange':
+            sender_client_id = packet.get('client_id')
+            sender_name = str(packet.get('from', f'Client {sender_client_id}'))
+            encrypted_key = str(packet.get('encrypted_key', ''))
+            if sender_client_id is None or not encrypted_key:
+                return
+
+            try:
+                session_key = self.rsa.decrypt_from_base64(encrypted_key).decode('ascii')
+                self.chacha.key_from_text(session_key)
+            except (TypeError, ValueError) as exc:
+                self.add_message(f'[SYSTEM] Could not load secure key from {sender_name}: {exc}')
+                return
+
+            self.set_session_key(sender_client_id, session_key, sender_name)
+            self.add_message(f'[SYSTEM] Secure session key received from {sender_name}.')
+            self.update_status()
+            return
+
+        if packet_type == 'encrypted_chat':
+            sender_client_id = packet.get('client_id')
+            sender = str(packet.get('from', 'Unknown'))
+            peer = self.get_peer_info(sender_client_id)
+            if peer is None or not peer.get('session_key'):
+                self.add_message(f'[SYSTEM] Missing secure key for {sender}.')
+                return
+
+            try:
+                message = self.chacha.decrypt(packet, peer['session_key']).decode('utf-8', errors='replace')
+            except (TypeError, ValueError) as exc:
+                self.add_message(f'[SYSTEM] Could not decrypt message from {sender}: {exc}')
+                return
+
+            self.add_message(f'{sender}: {message}')
+            return
+
+        if packet_type == 'system':
+            self.add_message(f'[SYSTEM] {packet.get("message", "")}')
+            return
+
     def connect(self):
         self.conn = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.conn.connect((HOST, PORT))
-        self.status = f'Connected to {HOST}:{PORT}'
+        self.update_status()
         self.listener = threading.Thread(target=self.receive_messages, daemon=True)
         self.listener.start()
+        try:
+            self.send_packet({
+                'type': 'hello',
+                'name': self.name,
+                'public_key': self.rsa.export_public_key(),
+            })
+        except OSError:
+            self.close_connection()
+            raise
 
     def receive_messages(self):
+        buffer = ''
+
         try:
             while self.running:
                 data = self.conn.recv(4096)
                 if not data:
                     self.add_message('[SYSTEM] Server closed the connection.')
                     break
-                self.add_message(data.decode(errors='replace'))
+
+                buffer += data.decode('utf-8', errors='replace')
+                while '\n' in buffer:
+                    line, buffer = buffer.split('\n', 1)
+                    if not line.strip():
+                        continue
+
+                    try:
+                        packet = json.loads(line)
+                    except json.JSONDecodeError:
+                        self.add_message('[SYSTEM] Received malformed data from server.')
+                        continue
+
+                    try:
+                        self.handle_packet(packet)
+                    except (OSError, TypeError, ValueError) as exc:
+                        self.add_message(f'[SYSTEM] Protocol error: {exc}')
         except (ConnectionResetError, OSError) as exc:
             if self.running:
                 self.add_message(f'[SYSTEM] Connection lost: {exc}')
@@ -217,10 +504,8 @@ class ChatClient:
                     if message.lower() == '/quit':
                         break
 
-                    payload = f'{self.name}: {message}'
                     try:
-                        self.conn.sendall(payload.encode())
-                        self.add_message(payload)
+                        self.send_chat_message(message)
                     except OSError as exc:
                         self.add_message(f'[SYSTEM] Send failed: {exc}')
                         break

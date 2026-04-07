@@ -1,6 +1,6 @@
 #
-# ChatServer.py
-# Created: 03/31/2026
+# PlainChatServer.py
+# Created: 04/07/2026
 # Last Updated: 04/07/2026 by Codex
 #
 
@@ -10,10 +10,8 @@ import socket
 import textwrap
 import threading
 
-from RSA import RSAKeyExchange
-
 HOST = '127.0.0.1'
-PORT = 65432
+PORT = 65433
 MAX_CLIENTS = 10
 POLL_MS = 100
 
@@ -56,10 +54,9 @@ def wrap_lines(messages, width):
     return lines
 
 
-class ChatServer:
+class PlainChatServer:
     def __init__(self):
         self.server = None
-        self.rsa = RSAKeyExchange()
         self.clients = {}
         self.client_threads = []
         self.clients_lock = threading.Lock()
@@ -103,28 +100,6 @@ class ChatServer:
                 return None
             return dict(info)
 
-    def get_peer_list(self, exclude_conn):
-        with self.clients_lock:
-            peers = []
-            for conn, info in self.clients.items():
-                if conn is exclude_conn or not info['public_key']:
-                    continue
-                peers.append({
-                    'client_id': info['id'],
-                    'name': info['name'],
-                    'public_key': info['public_key'],
-                })
-
-        return peers
-
-    def get_client_by_id(self, target_client_id):
-        with self.clients_lock:
-            for conn, info in self.clients.items():
-                if info['id'] == target_client_id:
-                    return conn, dict(info)
-
-        return None, None
-
     def start(self):
         self.server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
@@ -154,7 +129,6 @@ class ChatServer:
                         'id': client_id,
                         'addr': addr,
                         'name': f'Client {client_id}',
-                        'public_key': '',
                     }
 
             if client_id is None:
@@ -180,129 +154,42 @@ class ChatServer:
 
         if packet_type == 'hello':
             name = str(packet.get('name', '')).strip() or f'Client {client_id}'
-            public_key = str(packet.get('public_key', ''))
-
-            try:
-                encrypted_proof = self.rsa.encrypt_for_public_key(
-                    f'client-{client_id}-ready',
-                    public_key,
-                )
-            except (TypeError, ValueError) as exc:
-                self.log(f'[CLIENT {client_id}] Invalid RSA public key: {exc}')
-                try:
-                    self.send_packet(conn, {'type': 'system', 'message': 'RSA key exchange failed.'})
-                except OSError:
-                    pass
-                return
 
             with self.clients_lock:
                 info = self.clients.get(conn)
                 if info is None:
                     return
                 info['name'] = name
-                info['public_key'] = public_key
 
             self.send_packet(conn, {
                 'type': 'welcome',
                 'client_id': client_id,
-                'server_public_key': self.rsa.export_public_key(),
-                'proof': encrypted_proof,
-            })
-            self.send_packet(conn, {
-                'type': 'peer_list',
-                'peers': self.get_peer_list(conn),
             })
             self.broadcast_packet({
                 'type': 'peer_joined',
                 'client_id': client_id,
                 'name': name,
-                'public_key': public_key,
             }, exclude=conn)
-            self.log(f'[CLIENT {client_id}] RSA public key registered for {name}')
-            return
-
-        if packet_type == 'hello_confirm':
-            proof = str(packet.get('proof', ''))
-            try:
-                decrypted = self.rsa.decrypt_from_base64(proof).decode('utf-8', errors='replace')
-            except (TypeError, ValueError) as exc:
-                self.log(f'[CLIENT {client_id}] RSA confirmation failed: {exc}')
-                return
-
-            if decrypted == f'server-ready:{client_id}':
-                info = self.get_client_info(conn)
-                name = info['name'] if info is not None else f'Client {client_id}'
-                self.log(f'[CLIENT {client_id}] RSA handshake complete with {name}')
-            else:
-                self.log(f'[CLIENT {client_id}] Invalid RSA confirmation payload')
-            return
-
-        if packet_type == 'key_exchange':
-            target_client_id = packet.get('target_client_id')
-            encrypted_key = str(packet.get('encrypted_key', ''))
-            info = self.get_client_info(conn)
-            target_conn, _ = self.get_client_by_id(target_client_id)
-            if info is None or target_conn is None or not encrypted_key:
-                try:
-                    self.send_packet(conn, {'type': 'system', 'message': 'Secure key exchange failed.'})
-                except OSError:
-                    pass
-                return
-
-            sender_name = info['name']
-            try:
-                self.send_packet(target_conn, {
-                    'type': 'key_exchange',
-                    'client_id': client_id,
-                    'from': sender_name,
-                    'encrypted_key': encrypted_key,
-                })
-            except OSError:
-                pass
-
-            self.log(f'[CLIENT {client_id}] {sender_name} sent encrypted session key to CLIENT {target_client_id}')
-            return
-
-        if packet_type == 'encrypted_chat':
-            target_client_id = packet.get('target_client_id')
-            info = self.get_client_info(conn)
-            target_conn, _ = self.get_client_by_id(target_client_id)
-            if info is None or target_conn is None:
-                try:
-                    self.send_packet(conn, {'type': 'system', 'message': 'Encrypted message relay failed.'})
-                except OSError:
-                    pass
-                return
-
-            sender_name = info['name']
-            relay_packet = {
-                'type': 'encrypted_chat',
-                'client_id': client_id,
-                'from': sender_name,
-                'nonce': str(packet.get('nonce', '')),
-                'ciphertext': str(packet.get('ciphertext', '')),
-                'tag': str(packet.get('tag', '')),
-            }
-            if not relay_packet['nonce'] or not relay_packet['ciphertext'] or not relay_packet['tag']:
-                return
-
-            try:
-                self.send_packet(target_conn, relay_packet)
-            except OSError:
-                pass
-
-            self.log(
-                f'[CLIENT {client_id}] {sender_name} sent encrypted message to CLIENT {target_client_id} '
-                f'| ciphertext={relay_packet["ciphertext"]}'
-            )
+            self.log(f'[CLIENT {client_id}] Plaintext connection ready for {name}')
             return
 
         if packet_type == 'chat':
-            self.log(f'[CLIENT {client_id}] Rejected plaintext chat packet')
-            try:
-                self.send_packet(conn, {'type': 'system', 'message': 'Plaintext chat is disabled.'})
-            except OSError:
-                pass
+            message = str(packet.get('message', '')).strip()
+            if not message:
+                return
+
+            info = self.get_client_info(conn)
+            if info is None:
+                return
+
+            sender_name = info['name']
+            self.log(f'[CLIENT {client_id}] {sender_name}: {message}')
+            self.broadcast_packet({
+                'type': 'chat',
+                'client_id': client_id,
+                'from': sender_name,
+                'message': message,
+            }, exclude=conn)
             return
 
         self.log(f'[CLIENT {client_id}] Unknown packet type: {packet_type}')
@@ -341,12 +228,12 @@ class ChatServer:
             except OSError:
                 pass
 
+            name = info['name'] if info is not None else f'Client {client_id}'
             self.broadcast_packet({
                 'type': 'peer_left',
                 'client_id': client_id,
+                'name': name,
             }, exclude=conn)
-
-            name = info['name'] if info is not None else f'Client {client_id}'
             self.log(f'[CLIENT {client_id}] Disconnected ({name})')
 
     def draw(self, stdscr):
@@ -357,7 +244,7 @@ class ChatServer:
         log_height = max(1, log_bottom - log_top + 1)
         log_width = max(8, width - 4)
 
-        safe_addstr(stdscr, 0, 2, 'MATH 447 CHAT ROOM SERVER', curses.A_BOLD)
+        safe_addstr(stdscr, 0, 2, 'MATH 447 CHAT ROOM SERVER (PLAINTEXT)', curses.A_BOLD)
         safe_addstr(stdscr, 1, 2, f'Listening on {HOST}:{PORT} | Active clients: {self.active_clients()}/{MAX_CLIENTS}')
         draw_hline(stdscr, 2)
         draw_hline(stdscr, height - 2)
@@ -371,7 +258,7 @@ class ChatServer:
 
     def show_error(self, stdscr, message):
         stdscr.erase()
-        safe_addstr(stdscr, 1, 2, 'MATH 447 CHAT ROOM SERVER', curses.A_BOLD)
+        safe_addstr(stdscr, 1, 2, 'MATH 447 CHAT ROOM SERVER (PLAINTEXT)', curses.A_BOLD)
         draw_hline(stdscr, 2)
         wrapped = wrap_lines([message], max(8, stdscr.getmaxyx()[1] - 4))
         for row, line in enumerate(wrapped, start=4):
@@ -435,7 +322,7 @@ class ChatServer:
 
 
 def main():
-    server = ChatServer()
+    server = PlainChatServer()
     curses.wrapper(server.run)
 
 
