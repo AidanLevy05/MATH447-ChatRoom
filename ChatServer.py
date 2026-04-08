@@ -12,8 +12,10 @@ import threading
 
 from RSA import RSAKeyExchange
 
-HOST = '127.0.0.1'
+HOST = '0.0.0.0'
 PORT = 65432
+DISCOVERY_PORT = 65433
+DISCOVERY_MESSAGE = 'DISCOVER_CHAT_SERVER'
 MAX_CLIENTS = 10
 POLL_MS = 100
 
@@ -59,6 +61,7 @@ def wrap_lines(messages, width):
 class ChatServer:
     def __init__(self):
         self.server = None
+        self.discovery_socket = None
         self.rsa = RSAKeyExchange()
         self.clients = {}
         self.client_threads = []
@@ -69,6 +72,7 @@ class ChatServer:
         self.running.set()
         self.client_id = 0
         self.accept_thread = None
+        self.discovery_thread = None
 
     def log(self, message):
         with self.logs_lock:
@@ -125,15 +129,61 @@ class ChatServer:
 
         return None, None
 
+    def get_server_ip(self, client_ip):
+        probe = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        try:
+            probe.connect((client_ip, DISCOVERY_PORT))
+            server_ip = probe.getsockname()[0]
+            if server_ip and not server_ip.startswith('127.'):
+                return server_ip
+        except OSError:
+            pass
+        finally:
+            probe.close()
+
+        try:
+            for server_ip in socket.gethostbyname_ex(socket.gethostname())[2]:
+                if server_ip and not server_ip.startswith('127.'):
+                    return server_ip
+        except OSError:
+            pass
+
+        return '127.0.0.1'
+
     def start(self):
-        self.server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self.server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        self.server.bind((HOST, PORT))
-        self.server.listen(MAX_CLIENTS)
-        self.server.settimeout(0.5)
+        try:
+            self.server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            self.server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            self.server.bind((HOST, PORT))
+            self.server.listen(MAX_CLIENTS)
+            self.server.settimeout(0.5)
+
+            self.discovery_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            self.discovery_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            self.discovery_socket.bind((HOST, DISCOVERY_PORT))
+            self.discovery_socket.settimeout(0.5)
+        except OSError:
+            if self.discovery_socket is not None:
+                try:
+                    self.discovery_socket.close()
+                except OSError:
+                    pass
+                self.discovery_socket = None
+
+            if self.server is not None:
+                try:
+                    self.server.close()
+                except OSError:
+                    pass
+                self.server = None
+
+            raise
+
         self.log(f'[SERVER] Listening on: {HOST}:{PORT}')
         self.accept_thread = threading.Thread(target=self.accept_loop, daemon=True)
         self.accept_thread.start()
+        self.discovery_thread = threading.Thread(target=self.discovery_loop, daemon=True)
+        self.discovery_thread.start()
 
     def accept_loop(self):
         while self.running.is_set():
@@ -174,6 +224,30 @@ class ChatServer:
             )
             self.client_threads.append(thread)
             thread.start()
+
+    def discovery_loop(self):
+        while self.running.is_set():
+            try:
+                data, addr = self.discovery_socket.recvfrom(4096)
+            except socket.timeout:
+                continue
+            except OSError:
+                break
+
+            message = data.decode('utf-8', errors='replace').strip()
+            if message != DISCOVERY_MESSAGE:
+                continue
+
+            response = json.dumps({
+                'name': 'Chat Server',
+                'ip': self.get_server_ip(addr[0]),
+                'port': PORT,
+            }).encode('utf-8')
+
+            try:
+                self.discovery_socket.sendto(response, addr)
+            except OSError:
+                pass
 
     def handle_packet(self, conn, client_id, packet):
         packet_type = packet.get('type', '')
@@ -293,7 +367,7 @@ class ChatServer:
 
             self.log(
                 f'[CLIENT {client_id}] {sender_name} sent encrypted message to CLIENT {target_client_id} '
-                f'| ciphertext={relay_packet["ciphertext"]}'
+                f'>> {relay_packet["ciphertext"]}'
             )
             return
 
@@ -384,6 +458,12 @@ class ChatServer:
     def shutdown(self):
         self.running.clear()
 
+        if self.discovery_socket is not None:
+            try:
+                self.discovery_socket.close()
+            except OSError:
+                pass
+
         if self.server is not None:
             try:
                 self.server.close()
@@ -406,6 +486,9 @@ class ChatServer:
 
         if self.accept_thread is not None:
             self.accept_thread.join(timeout=1)
+
+        if self.discovery_thread is not None:
+            self.discovery_thread.join(timeout=1)
 
         for thread in self.client_threads:
             thread.join(timeout=1)

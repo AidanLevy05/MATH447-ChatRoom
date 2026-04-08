@@ -9,12 +9,16 @@ import json
 import socket
 import textwrap
 import threading
+import time
 
 from ChaCha import ChaChaCipher
 from RSA import RSAKeyExchange
 
-HOST = '127.0.0.1'
+HOST = ''
 PORT = 65432
+DISCOVERY_PORT = 65433
+DISCOVERY_MESSAGE = 'DISCOVER_CHAT_SERVER'
+DISCOVERY_TIMEOUT = 2.0
 POLL_MS = 100
 
 
@@ -54,6 +58,53 @@ def wrap_lines(messages, width):
             wrapped = textwrap.wrap(part, width=width) or ['']
             lines.extend(wrapped)
     return lines
+
+
+def discover_servers():
+    servers = []
+    seen = set()
+
+    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    try:
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
+        sock.bind(('', 0))
+        sock.settimeout(0.25)
+        sock.sendto(DISCOVERY_MESSAGE.encode('utf-8'), ('255.255.255.255', DISCOVERY_PORT))
+
+        deadline = time.monotonic() + DISCOVERY_TIMEOUT
+        while time.monotonic() < deadline:
+            try:
+                data, addr = sock.recvfrom(4096)
+            except socket.timeout:
+                continue
+
+            try:
+                response = json.loads(data.decode('utf-8', errors='replace'))
+            except json.JSONDecodeError:
+                continue
+
+            server_ip = str(response.get('ip', addr[0])).strip() or addr[0]
+            try:
+                server_port = int(response.get('port', PORT))
+            except (TypeError, ValueError):
+                server_port = PORT
+
+            key = (server_ip, server_port)
+            if key in seen:
+                continue
+
+            seen.add(key)
+            servers.append({
+                'name': str(response.get('name', 'Chat Server')),
+                'ip': server_ip,
+                'port': server_port,
+            })
+    except OSError:
+        pass
+    finally:
+        sock.close()
+
+    return servers
 
 
 class ChatClient:
@@ -428,6 +479,86 @@ class ChatClient:
             elif 32 <= key <= 126:
                 buffer += chr(key)
 
+    def prompt_for_ip(self, stdscr):
+        buffer = ''
+
+        while True:
+            stdscr.erase()
+            height, width = stdscr.getmaxyx()
+            center_x = max(2, (width // 2) - 10)
+            center_y = max(2, height // 2 - 2)
+
+            safe_addstr(stdscr, center_y - 2, center_x, 'MATH 447 CHAT ROOM', curses.A_BOLD)
+            safe_addstr(stdscr, center_y, 2, f'Enter IP (port {PORT}) and press ENTER:')
+            draw_hline(stdscr, center_y + 1)
+            visible = buffer[-max(1, width - 6):]
+            safe_addstr(stdscr, center_y + 2, 2, f'> {visible}')
+            safe_addstr(stdscr, height - 2, 2, 'Digits and dots only. Press Ctrl+C to exit.')
+
+            cursor_x = min(width - 2, 4 + len(visible))
+            try:
+                stdscr.move(center_y + 2, cursor_x)
+            except curses.error:
+                pass
+
+            stdscr.refresh()
+            key = stdscr.getch()
+
+            if key in (curses.KEY_ENTER, 10, 13):
+                if buffer.strip():
+                    return buffer.strip()
+            elif key in (curses.KEY_BACKSPACE, 127, 8):
+                buffer = buffer[:-1]
+            elif key in (-1, curses.KEY_RESIZE):
+                continue
+            elif ord('0') <= key <= ord('9') or key == ord('.'):
+                buffer += chr(key)
+
+    def prompt_for_server(self, stdscr):
+        stdscr.erase()
+        height, width = stdscr.getmaxyx()
+        center_x = max(2, (width // 2) - 14)
+        center_y = max(2, height // 2 - 1)
+        safe_addstr(stdscr, center_y - 2, center_x, 'MATH 447 CHAT ROOM', curses.A_BOLD)
+        safe_addstr(stdscr, center_y, 2, 'Searching for chat servers on your LAN...')
+        safe_addstr(stdscr, height - 2, 2, 'Please wait.')
+        stdscr.refresh()
+
+        servers = discover_servers()
+
+        while True:
+            stdscr.erase()
+            height, width = stdscr.getmaxyx()
+            center_x = max(2, (width // 2) - 10)
+            top_y = max(2, height // 2 - 5)
+
+            safe_addstr(stdscr, top_y - 2, center_x, 'MATH 447 CHAT ROOM', curses.A_BOLD)
+            safe_addstr(stdscr, top_y, 2, 'Discovered Servers:')
+
+            row = top_y + 2
+            if servers:
+                for index, server in enumerate(servers[:9], start=1):
+                    safe_addstr(stdscr, row, 4, f'{index}. {server["ip"]}:{server["port"]}')
+                    row += 1
+            else:
+                safe_addstr(stdscr, row, 4, 'No servers found.')
+                row += 1
+
+            draw_hline(stdscr, row + 1)
+            safe_addstr(stdscr, row + 2, 2, 'Press 1-9 to select a server or M to enter an IP.')
+            safe_addstr(stdscr, height - 2, 2, 'Press Ctrl+C to exit.')
+            stdscr.refresh()
+
+            key = stdscr.getch()
+            if key in (-1, curses.KEY_RESIZE):
+                continue
+            if key in (ord('m'), ord('M')):
+                return self.prompt_for_ip(stdscr)
+            if ord('1') <= key <= ord('9'):
+                index = key - ord('1')
+                if index < len(servers):
+                    return servers[index]['ip']
+
     def draw(self, stdscr, input_buffer):
         stdscr.erase()
         height, width = stdscr.getmaxyx()
@@ -470,6 +601,8 @@ class ChatClient:
         stdscr.getch()
 
     def run(self, stdscr):
+        global HOST
+
         try:
             curses.curs_set(1)
         except curses.error:
@@ -478,6 +611,7 @@ class ChatClient:
         stdscr.timeout(POLL_MS)
 
         self.name = self.prompt_for_name(stdscr)
+        HOST = self.prompt_for_server(stdscr)
 
         try:
             self.connect()
