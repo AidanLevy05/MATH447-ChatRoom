@@ -1,4 +1,4 @@
-This is pdfTeX, Version 3.141592653-2.6-1.40.25 (TeX Live 2023) (preloaded format=pdflatex 2026.2.28)  6 APR 2026 10:53
+This is pdfTeX, Version 3.141592653-2.6-1.40.25 (TeX Live 2023) (preloaded format=pdflatex 2026.2.28)  13 APR 2026 17:21
 entering extended mode
  restricted \write18 enabled.
  %&-line parsing enabled.
@@ -355,16 +355,7 @@ Package hyperref Info: Link coloring OFF on input line 12.
 {/var/lib/texmf/fonts/map/pdftex/updmap/pdftex.map}{/usr/share/texlive/texmf-di
 st/fonts/enc/dvips/base/8r.enc}]
 
-LaTeX Warning: Citation `rfc8439' on page 1 undefined on input line 42.
-
-
-LaTeX Warning: Citation `rfc7905' on page 1 undefined on input line 44.
-
-
 LaTeX Warning: Citation `cloudflare' on page 1 undefined on input line 50.
-
-
-LaTeX Warning: Citation `bernstein2008' on page 1 undefined on input line 59.
 
 LaTeX Font Info:    Trying to load font information for U+msa on input line 59.
 
@@ -377,27 +368,18 @@ LaTeX Font Info:    Trying to load font information for U+msb on input line 59.
 (/usr/share/texlive/texmf-dist/tex/latex/amsfonts/umsb.fd
 File: umsb.fd 2013/01/14 v3.01 AMS symbols B
 )
-
-LaTeX Warning: Citation `bernstein2005' on page 1 undefined on input line 65.
-
-
 pdfTeX warning (ext4): destination with the same identifier (name{page.1}) has 
 been already used, duplicate ignored
 <to be read again> 
                    \relax 
 l.66 
       [1]
-
-LaTeX Warning: Citation `rfc8439' on page 2 undefined on input line 69.
-
-
-LaTeX Warning: Citation `procter2014' on page 2 undefined on input line 71.
-
 LaTeX Font Info:    Trying to load font information for OT1+pcr on input line 7
 5.
-(/usr/share/texlive/texmf-dist/tex/latex/psnfss/ot1pcr.fd
+ (/usr/share/texlive/texmf-dist/tex/latex/psnfss/ot1pcr.fd
 File: ot1pcr.fd 2001/06/04 font definitions for OT1/pcr.
-) [2] [3]
+) [2]
+[3]
 Underfull \hbox (badness 2050) in paragraph at lines 117--123
 []\OT1/ptm/m/n/12 A. Lan-g-ley, W. Chang, N. May-ro-giannopou-los, J. Stromberg
 -son, and S. Josef-s-son,
@@ -407,26 +389,17 @@ Underfull \hbox (badness 2050) in paragraph at lines 117--123
 
 LaTeX Warning: There were undefined references.
 
-
-LaTeX Warning: Label(s) may have changed. Rerun to get cross-references right.
-
-
-Package rerunfilecheck Warning: File `proposal.out' has changed.
-(rerunfilecheck)                Rerun to get outlines right
-(rerunfilecheck)                or use package `bookmark'.
-
-Package rerunfilecheck Info: Checksums for `proposal.out':
-(rerunfilecheck)             Before: 0AD1B1CB9788E1FB0BDB04918A9D4971;825
-(rerunfilecheck)             After:  0C980AB80D03C120F133DD34CC32D37E;1374.
+Package rerunfilecheck Info: File `proposal.out' has not changed.
+(rerunfilecheck)             Checksum: 0C980AB80D03C120F133DD34CC32D37E;1374.
  ) 
 Here is how much of TeX's memory you used:
- 9552 strings out of 477985
- 147869 string characters out of 5839380
+ 9556 strings out of 477985
+ 147918 string characters out of 5839380
  1859388 words of memory out of 6000000
- 29620 multiletter control sequences out of 15000+600000
+ 29624 multiletter control sequences out of 15000+600000
  529819 words of font info for 68 fonts, out of 8000000 for 9000
  14 hyphenation exceptions out of 8191
- 75i,6n,76p,1204b,544s stack positions out of 10000i,1000n,20000p,200000b,200000s
+ 75i,6n,76p,1195b,544s stack positions out of 10000i,1000n,20000p,200000b,200000s
 </usr/share/texlive/texmf-dist/fonts/type1/public/amsfonts/cm/cmmi12.pfb></us
 r/share/texlive/texmf-dist/fonts/type1/public/amsfonts/cm/cmr12.pfb></usr/share
 /texlive/texmf-dist/fonts/type1/public/amsfonts/cm/cmr8.pfb></usr/share/texlive
@@ -434,10 +407,10 @@ r/share/texlive/texmf-dist/fonts/type1/public/amsfonts/cm/cmr12.pfb></usr/share
 -dist/fonts/type1/urw/courier/ucrr8a.pfb></usr/share/texlive/texmf-dist/fonts/t
 ype1/urw/times/utmb8a.pfb></usr/share/texlive/texmf-dist/fonts/type1/urw/times/
 utmr8a.pfb></usr/share/texlive/texmf-dist/fonts/type1/urw/times/utmri8a.pfb>
-Output written on proposal.pdf (5 pages, 103326 bytes).
+Output written on proposal.pdf (5 pages, 103859 bytes).
 PDF statistics:
- 108 PDF objects out of 1000 (max. 8388607)
- 84 compressed objects within 1 object stream
+ 127 PDF objects out of 1000 (max. 8388607)
+ 102 compressed objects within 2 object streams
  19 named destinations out of 1000 (max. 500000)
- 33 words of extra memory for PDF output out of 10000 (max. 10000000)
+ 65 words of extra memory for PDF output out of 10000 (max. 10000000)
 
