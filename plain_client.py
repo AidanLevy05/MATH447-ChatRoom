@@ -1,7 +1,7 @@
 #
 # plain_client.py
 # Created: 04/07/2026
-# Last Updated: 04/07/2026 by Codex
+# Last Updated: 04/07/2026 by Aidan
 #
 
 import curses
